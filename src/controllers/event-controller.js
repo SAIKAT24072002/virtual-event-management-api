@@ -60,9 +60,12 @@ function createEventController({ emailService }) {
       let notification;
       try {
         const result = await emailService.sendEventConfirmation(req.user, event);
-        notification = result.delivered
-          ? { status: 'sent' }
-          : { status: 'preview', message: 'Email was previewed locally and not delivered' };
+        notification = {
+          status: 'accepted',
+          provider: result.provider,
+          messageId: result.messageId,
+          message: 'Brevo accepted the request; inbox delivery is not verified'
+        };
       } catch (error) {
         console.error('Event confirmation email failed:', error.message);
         notification = { status: 'failed', message: 'Registration succeeded, but confirmation email could not be sent' };

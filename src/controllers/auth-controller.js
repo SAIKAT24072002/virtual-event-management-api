@@ -24,9 +24,12 @@ function createAuthController({ emailService, jwtSecret, jwtExpiresIn }) {
       let notification;
       try {
         const result = await emailService.sendWelcome(user);
-        notification = result.delivered
-          ? { status: 'sent' }
-          : { status: 'preview', message: 'Email was previewed locally and not delivered' };
+        notification = {
+          status: 'accepted',
+          provider: result.provider,
+          messageId: result.messageId,
+          message: 'Brevo accepted the request; inbox delivery is not verified'
+        };
       } catch (error) {
         console.error('Welcome email failed:', error.message);
         notification = { status: 'failed', message: 'Account created, but welcome email could not be sent' };

@@ -1,53 +1,76 @@
-const nodemailer = require('nodemailer');
+const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 
-function createEmailService(env = process.env) {
-  const smtpKeys = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM'];
-  const hasCompleteSmtp = smtpKeys.every((key) => env[key]);
-  const mode = env.EMAIL_MODE || (hasCompleteSmtp ? 'smtp' : 'preview');
-
-  if (!['preview', 'smtp'].includes(mode)) {
-    throw new Error('EMAIL_MODE must be preview or smtp');
+function requireConfig(env) {
+  const required = ['BREVO_API_KEY', 'EMAIL_FROM', 'EMAIL_FROM_NAME'];
+  const missing = required.filter((key) => !env[key] || !env[key].trim());
+  if (missing.length) {
+    throw new Error(`Incomplete Brevo email configuration: ${missing.join(', ')} required`);
   }
-  if ((env.NODE_ENV === 'production' || mode === 'smtp') && !hasCompleteSmtp) {
-    throw new Error('Incomplete SMTP configuration: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS and EMAIL_FROM are required');
-  }
+}
 
-  const transporter = mode === 'smtp' && hasCompleteSmtp
-    ? nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: Number(env.SMTP_PORT),
-      secure: String(env.SMTP_SECURE).toLowerCase() === 'true',
-      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
-      disableFileAccess: true,
-      disableUrlAccess: true
-    })
-    : null;
+function singleLine(value) {
+  return value.replace(/[\r\n]+/g, ' ').trim();
+}
 
-  async function send(message) {
-    if (!transporter) {
-      console.info(`[email-preview] To: ${message.to}; Subject: ${message.subject}`);
-      return { delivered: false, mode: 'preview' };
+function createEmailService(env = process.env, fetchImpl = globalThis.fetch) {
+  requireConfig(env);
+  if (typeof fetchImpl !== 'function') throw new Error('A Fetch API implementation is required');
+
+  async function send({ recipient, subject, textContent }) {
+    let response;
+    try {
+      response = await fetchImpl(BREVO_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'api-key': env.BREVO_API_KEY,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { email: env.EMAIL_FROM, name: env.EMAIL_FROM_NAME },
+          to: [{ email: recipient.email, name: recipient.name }],
+          subject: singleLine(subject),
+          textContent
+        })
+      });
+    } catch (error) {
+      throw new Error('Brevo email request failed');
     }
-    await transporter.sendMail({ from: env.EMAIL_FROM, ...message });
-    return { delivered: true, mode: 'smtp' };
+
+    if (response.status !== 201) {
+      throw new Error(`Brevo email request was rejected with status ${response.status}`);
+    }
+
+    let result;
+    try {
+      result = await response.json();
+    } catch (error) {
+      result = {};
+    }
+
+    return {
+      accepted: true,
+      provider: 'brevo',
+      messageId: typeof result.messageId === 'string' ? result.messageId : null
+    };
   }
 
   return {
     sendWelcome(user) {
       return send({
-        to: user.email,
+        recipient: { email: user.email, name: user.name },
         subject: 'Welcome to Virtual Event Management',
-        text: `Hello ${user.name}, your ${user.role} account is ready.`
+        textContent: `Hello ${user.name}, your ${user.role} account is ready.`
       });
     },
     sendEventConfirmation(user, event) {
       return send({
-        to: user.email,
+        recipient: { email: user.email, name: user.name },
         subject: `Registration confirmed: ${event.title}`,
-        text: `You are registered for ${event.title}.\nDate: ${event.date} UTC\nTime: ${event.time} UTC\n\n${event.description}`
+        textContent: `You are registered for ${event.title}.\nDate: ${event.date} UTC\nTime: ${event.time} UTC\n\n${event.description}`
       });
     }
   };
 }
 
-module.exports = { createEmailService };
+module.exports = { createEmailService, BREVO_ENDPOINT };

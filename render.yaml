@@ -15,17 +15,9 @@ services:
         value: 1h
       - key: CORS_ORIGIN
         value: "*"
-      - key: EMAIL_MODE
-        value: smtp
+      - key: BREVO_API_KEY
+        sync: false
       - key: EMAIL_FROM
         sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_SECURE
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
+      - key: EMAIL_FROM_NAME
         sync: false

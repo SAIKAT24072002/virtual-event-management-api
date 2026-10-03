@@ -10,15 +10,15 @@ Verified public repository: https://github.com/SAIKAT24072002/virtual-event-mana
 - Organizer/attendee authorization and event ownership enforcement
 - Event CRUD with strict UTC date/time validation
 - Attendee registration, cancellation, personal registration list, and organizer participant management
-- Welcome and event-confirmation email through Nodemailer
-- Explicit local email preview mode; registration remains saved if notification delivery fails
+- Welcome and event-confirmation email through the Brevo transactional HTTP API
+- Explicit provider-acceptance status; registration remains saved if the email request fails
 - Helmet, configurable CORS, authentication rate limiting, request-size limits, and safe errors
 - Swagger UI at `/docs`, OpenAPI JSON at `/openapi.json`, health check, Postman collection
 - Jest/Supertest integration tests with an isolated in-memory store
 
 ## Technology
 
-Node.js, Express, JavaScript, bcrypt, JSON Web Token, Nodemailer, Helmet, CORS, express-rate-limit, Swagger UI, Jest, and Supertest.
+Node.js, Express, JavaScript, bcrypt, JSON Web Token, the Brevo transactional email HTTP API, Helmet, CORS, express-rate-limit, Swagger UI, Jest, and Supertest.
 
 ## Prerequisites
 
@@ -50,15 +50,11 @@ The default URL is `http://localhost:3000`; interactive documentation is at `htt
 | `JWT_SECRET` | Yes | Secret used to sign and verify JWTs; there is no fallback |
 | `JWT_EXPIRES_IN` | No | JWT lifetime accepted by `jsonwebtoken`; defaults to `1h` |
 | `CORS_ORIGIN` | No | `*` or a comma-separated origin allow-list; defaults to `*` |
-| `EMAIL_MODE` | No locally | `preview` for clearly labelled console previews or `smtp` for delivery |
-| `EMAIL_FROM` | SMTP | Sender address |
-| `SMTP_HOST` | Production/SMTP | SMTP server hostname |
-| `SMTP_PORT` | Production/SMTP | SMTP port, commonly `587` or `465` |
-| `SMTP_SECURE` | Production/SMTP | `true` for implicit TLS, otherwise explicitly set `false` |
-| `SMTP_USER` | Production/SMTP | SMTP username |
-| `SMTP_PASS` | Production/SMTP | SMTP password |
+| `BREVO_API_KEY` | Yes | Brevo API key with transactional email permission |
+| `EMAIL_FROM` | Yes | A sender email address verified in the Brevo account |
+| `EMAIL_FROM_NAME` | Yes | Display name shown for the sender |
 
-In local development, missing SMTP settings select preview mode. Preview output is explicitly marked and the API returns `notification.status: "preview"`; it is not presented as delivery. In production, all SMTP settings are required and incomplete configuration stops startup with a clear error. Never commit `.env`.
+The application sends `POST https://api.brevo.com/v3/smtp/email` with the API key in the `api-key` header. Missing Brevo configuration stops startup with a clear error. A successful HTTP 201 response is returned as `notification.status: "accepted"` with the Brevo message ID. It means Brevo accepted the request; it does **not** verify inbox delivery. Never commit `.env` or print the API key.
 
 ## Test
 
@@ -66,7 +62,7 @@ In local development, missing SMTP settings select preview mode. Preview output 
 npm run test
 ```
 
-Tests mock the email service and make no real SMTP calls. Every test resets the in-memory maps.
+Tests mock both the application email service and Brevo HTTP responses; they make no real Brevo calls. Every test resets the in-memory maps.
 
 ## Roles and access rules
 
@@ -120,7 +116,7 @@ Content-Type: application/json
 ```
 
 ```json
-{"success":true,"data":{"user":{"id":"...","name":"Asha Roy","role":"organizer","createdAt":"...","email":"asha@example.com"},"notification":{"status":"preview","message":"Email was previewed locally and not delivered"}}}
+{"success":true,"data":{"user":{"id":"...","name":"Asha Roy","role":"organizer","createdAt":"...","email":"asha@example.com"},"notification":{"status":"accepted","provider":"brevo","messageId":"<provider-message-id>","message":"Brevo accepted the request; inbox delivery is not verified"}}}
 ```
 
 Login:
@@ -168,7 +164,7 @@ Authorization: Bearer <attendee-token>
 ```
 
 ```json
-{"success":true,"data":{"event":{"id":"...","title":"Updated Summit","description":"Updated agenda.","date":"2099-08-21","time":"10:00","organizerId":"...","participantCount":1,"createdAt":"...","updatedAt":"..."},"notification":{"status":"sent"}}}
+{"success":true,"data":{"event":{"id":"...","title":"Updated Summit","description":"Updated agenda.","date":"2099-08-21","time":"10:00","organizerId":"...","participantCount":1,"createdAt":"...","updatedAt":"..."},"notification":{"status":"accepted","provider":"brevo","messageId":"<provider-message-id>","message":"Brevo accepted the request; inbox delivery is not verified"}}}
 ```
 
 ## Schedule and storage notes
@@ -183,7 +179,7 @@ The included `render.yaml` defines a free Node web service, `npm ci`, `npm start
 
 1. Push this repository to GitHub.
 2. In Render, choose **New > Blueprint** and select the repository.
-3. Enter real values for `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` when prompted.
+3. Enter real values for `BREVO_API_KEY`, `EMAIL_FROM`, and `EMAIL_FROM_NAME` when prompted. The sender address must be verified in Brevo.
 4. Deploy, then verify `https://<service-host>/health` and `https://<service-host>/docs`.
 5. Run the register → login → create event → attendee registration flow against the HTTPS URL.
 

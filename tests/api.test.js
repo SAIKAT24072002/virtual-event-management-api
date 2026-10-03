@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { createApp } = require('../src/app');
 const { users, events, resetStore } = require('../src/store');
-const { createEmailService } = require('../src/services/email-service');
+const { createEmailService, BREVO_ENDPOINT } = require('../src/services/email-service');
 
 const SECRET = 'test-secret-that-is-long-enough-for-tests';
 const FUTURE_EVENT = {
@@ -41,8 +41,8 @@ async function createEvent(token, input = FUTURE_EVENT) {
 beforeEach(() => {
   resetStore();
   emailService = {
-    sendWelcome: jest.fn().mockResolvedValue({ delivered: true, mode: 'smtp' }),
-    sendEventConfirmation: jest.fn().mockResolvedValue({ delivered: true, mode: 'smtp' })
+    sendWelcome: jest.fn().mockResolvedValue({ accepted: true, provider: 'brevo', messageId: 'welcome-id' }),
+    sendEventConfirmation: jest.fn().mockResolvedValue({ accepted: true, provider: 'brevo', messageId: 'event-id' })
   };
   app = createApp({ jwtSecret: SECRET, jwtExpiresIn: '1h', emailService });
 });
@@ -69,16 +69,58 @@ describe('health and errors', () => {
 });
 
 describe('email configuration', () => {
-  test('preview mode is explicit and never claims delivery', async () => {
-    const log = jest.spyOn(console, 'info').mockImplementation(() => {});
-    const service = createEmailService({ EMAIL_MODE: 'preview', EMAIL_FROM: 'no-reply@example.com' });
-    await expect(service.sendWelcome({ name: 'Preview', email: 'preview@example.com', role: 'attendee' }))
-      .resolves.toEqual({ delivered: false, mode: 'preview' });
-    log.mockRestore();
+  const brevoEnv = {
+    BREVO_API_KEY: 'test-api-key',
+    EMAIL_FROM: 'verified@example.com',
+    EMAIL_FROM_NAME: 'Virtual Events'
+  };
+
+  test('sends a welcome email through Brevo and reports acceptance, not delivery', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 201,
+      json: jest.fn().mockResolvedValue({ messageId: '<welcome@brevo>' })
+    });
+    const service = createEmailService(brevoEnv, fetchMock);
+    await expect(service.sendWelcome({ name: 'Asha', email: 'asha@example.com', role: 'attendee' }))
+      .resolves.toEqual({ accepted: true, provider: 'brevo', messageId: '<welcome@brevo>' });
+
+    expect(fetchMock).toHaveBeenCalledWith(BREVO_ENDPOINT, expect.objectContaining({ method: 'POST' }));
+    const options = fetchMock.mock.calls[0][1];
+    expect(options.headers['api-key']).toBe('test-api-key');
+    const body = JSON.parse(options.body);
+    expect(body.sender).toEqual({ email: 'verified@example.com', name: 'Virtual Events' });
+    expect(body.to).toEqual([{ email: 'asha@example.com', name: 'Asha' }]);
+    expect(body.subject).toBe('Welcome to Virtual Event Management');
+    expect(body.textContent).toContain('attendee account is ready');
   });
 
-  test('production rejects incomplete SMTP configuration', () => {
-    expect(() => createEmailService({ NODE_ENV: 'production' })).toThrow(/Incomplete SMTP configuration/);
+  test('event confirmation contains event title, date, time and description', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 201,
+      json: jest.fn().mockResolvedValue({ messageId: '<event@brevo>' })
+    });
+    const service = createEmailService(brevoEnv, fetchMock);
+    await service.sendEventConfirmation(
+      { name: 'Guest', email: 'guest@example.com' },
+      { title: 'Summit', date: '2099-06-15', time: '14:30', description: 'Practical sessions.' }
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.subject).toBe('Registration confirmed: Summit');
+    expect(body.textContent).toContain('Summit');
+    expect(body.textContent).toContain('2099-06-15');
+    expect(body.textContent).toContain('14:30 UTC');
+    expect(body.textContent).toContain('Practical sessions.');
+  });
+
+  test('rejects incomplete Brevo configuration', () => {
+    expect(() => createEmailService({})).toThrow(/BREVO_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME required/);
+  });
+
+  test('handles Brevo rejection without exposing the API key', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ status: 401, json: jest.fn() });
+    const service = createEmailService(brevoEnv, fetchMock);
+    await expect(service.sendWelcome({ name: 'Asha', email: 'asha@example.com', role: 'attendee' }))
+      .rejects.toThrow('Brevo email request was rejected with status 401');
   });
 });
 
@@ -89,6 +131,8 @@ describe('account registration and login', () => {
     expect(response.body.data.user.email).toBe('user@example.com');
     expect(response.body.data.user).not.toHaveProperty('passwordHash');
     expect(response.body.data.user).not.toHaveProperty('password');
+    expect(response.body.data.notification.status).toBe('accepted');
+    expect(response.body.data.notification.message).toMatch(/inbox delivery is not verified/);
     const stored = [...users.values()][0];
     expect(stored.passwordHash).not.toBe('password123');
     expect(await bcrypt.compare('password123', stored.passwordHash)).toBe(true);
@@ -128,7 +172,7 @@ describe('account registration and login', () => {
   });
 
   test('preserves account when welcome email fails', async () => {
-    emailService.sendWelcome.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    emailService.sendWelcome.mockRejectedValueOnce(new Error('Brevo unavailable'));
     const response = await register();
     expect(response.status).toBe(201);
     expect(response.body.data.notification.status).toBe('failed');
@@ -227,6 +271,8 @@ describe('event registration and participant management', () => {
     const registration = await request(app).post(`/events/${id}/register`).set('Authorization', `Bearer ${attendee.token}`);
     expect(registration.status).toBe(201);
     expect(registration.body.data.event.participantCount).toBe(1);
+    expect(registration.body.data.notification.status).toBe('accepted');
+    expect(registration.body.data.notification).not.toHaveProperty('delivered');
     expect(emailService.sendEventConfirmation).toHaveBeenCalledTimes(1);
     const mine = await request(app).get('/me/registrations').set('Authorization', `Bearer ${attendee.token}`);
     expect(mine.body.data.events).toHaveLength(1);
@@ -281,7 +327,7 @@ describe('event registration and participant management', () => {
     const owner = await tokenFor('organizer', 'owner@example.com');
     const attendee = await tokenFor('attendee', 'attendee@example.com');
     const id = (await createEvent(owner.token)).body.data.event.id;
-    emailService.sendEventConfirmation.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    emailService.sendEventConfirmation.mockRejectedValueOnce(new Error('Brevo unavailable'));
     const response = await request(app).post(`/events/${id}/register`).set('Authorization', `Bearer ${attendee.token}`);
     expect(response.status).toBe(201);
     expect(response.body.data.notification.status).toBe('failed');
