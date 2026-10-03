@@ -10,8 +10,9 @@
     "smoke": "node scripts/smoke-test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.22.0 <23"
   },
+  "packageManager": "npm@10.9.4",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
