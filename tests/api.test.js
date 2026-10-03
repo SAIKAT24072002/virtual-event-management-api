@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { createApp } = require('../src/app');
 const { users, events, resetStore } = require('../src/store');
+const { createEmailService } = require('../src/services/email-service');
 
 const SECRET = 'test-secret-that-is-long-enough-for-tests';
 const FUTURE_EVENT = {
@@ -64,6 +65,20 @@ describe('health and errors', () => {
   test('rejects oversized JSON bodies', async () => {
     const response = await request(app).post('/register').send({ name: 'x'.repeat(110000) });
     expect(response.status).toBe(413);
+  });
+});
+
+describe('email configuration', () => {
+  test('preview mode is explicit and never claims delivery', async () => {
+    const log = jest.spyOn(console, 'info').mockImplementation(() => {});
+    const service = createEmailService({ EMAIL_MODE: 'preview', EMAIL_FROM: 'no-reply@example.com' });
+    await expect(service.sendWelcome({ name: 'Preview', email: 'preview@example.com', role: 'attendee' }))
+      .resolves.toEqual({ delivered: false, mode: 'preview' });
+    log.mockRestore();
+  });
+
+  test('production rejects incomplete SMTP configuration', () => {
+    expect(() => createEmailService({ NODE_ENV: 'production' })).toThrow(/Incomplete SMTP configuration/);
   });
 });
 

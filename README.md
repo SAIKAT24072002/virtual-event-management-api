@@ -52,7 +52,7 @@ The default URL is `http://localhost:3000`; interactive documentation is at `htt
 | `EMAIL_FROM` | SMTP | Sender address |
 | `SMTP_HOST` | Production/SMTP | SMTP server hostname |
 | `SMTP_PORT` | Production/SMTP | SMTP port, commonly `587` or `465` |
-| `SMTP_SECURE` | No | `true` for implicit TLS, otherwise `false` |
+| `SMTP_SECURE` | Production/SMTP | `true` for implicit TLS, otherwise explicitly set `false` |
 | `SMTP_USER` | Production/SMTP | SMTP username |
 | `SMTP_PASS` | Production/SMTP | SMTP password |
 
