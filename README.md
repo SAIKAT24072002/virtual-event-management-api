@@ -2,6 +2,8 @@
 
 A secure, deployment-ready REST API for managing virtual events. Organizers can create and manage their own events and participant lists; attendees can browse events and manage their registrations. Data is intentionally stored in memory for this assignment.
 
+Verified public repository: https://github.com/SAIKAT24072002/virtual-event-management-api
+
 ## Features
 
 - Account registration and login with bcrypt password hashing and expiring JWTs
