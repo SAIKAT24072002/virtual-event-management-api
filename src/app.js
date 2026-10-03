@@ -27,7 +27,14 @@ function createApp(options = {}) {
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/', (req, res) => res.json({ success: true, data: { name: 'Virtual Event Management API', status: 'running', documentation: '/docs' } }));
-  app.get('/health', (req, res) => res.json({ success: true, data: { status: 'ok', uptimeSeconds: Math.floor(process.uptime()) } }));
+  app.get('/health', (req, res) => res.json({
+    success: true,
+    data: {
+      status: 'ok',
+      uptimeSeconds: Math.floor(process.uptime()),
+      commit: process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 7) : null
+    }
+  }));
   app.get('/openapi.json', (req, res) => res.json(openapi));
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 

@@ -12,6 +12,21 @@ function singleLine(value) {
   return value.replace(/[\r\n]+/g, ' ').trim();
 }
 
+function safeProviderMessage(value, apiKey) {
+  if (typeof value !== 'string') return null;
+  return value
+    .replaceAll(apiKey, '[redacted]')
+    .replace(/xkeysib-[A-Za-z0-9_-]+/gi, '[redacted]')
+    .slice(0, 300);
+}
+
+function brevoError(message, details = {}) {
+  const error = new Error(message);
+  error.provider = 'brevo';
+  Object.assign(error, details);
+  return error;
+}
+
 function createEmailService(env = process.env, fetchImpl = globalThis.fetch) {
   requireConfig(env);
   if (typeof fetchImpl !== 'function') throw new Error('A Fetch API implementation is required');
@@ -34,11 +49,21 @@ function createEmailService(env = process.env, fetchImpl = globalThis.fetch) {
         })
       });
     } catch (error) {
-      throw new Error('Brevo email request failed');
+      throw brevoError('Brevo email request failed');
     }
 
     if (response.status !== 201) {
-      throw new Error(`Brevo email request was rejected with status ${response.status}`);
+      let providerResult = {};
+      try {
+        providerResult = await response.json();
+      } catch (error) {
+        providerResult = {};
+      }
+      throw brevoError(`Brevo email request was rejected with status ${response.status}`, {
+        providerStatus: response.status,
+        providerCode: typeof providerResult.code === 'string' ? providerResult.code : null,
+        providerMessage: safeProviderMessage(providerResult.message, env.BREVO_API_KEY)
+      });
     }
 
     let result;

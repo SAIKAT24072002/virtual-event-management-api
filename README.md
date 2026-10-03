@@ -4,6 +4,10 @@ A secure, deployment-ready REST API for managing virtual events. Organizers can 
 
 Verified public repository: https://github.com/SAIKAT24072002/virtual-event-management-api
 
+Verified live deployment: https://virtual-event-management-api.onrender.com
+
+Live API documentation: https://virtual-event-management-api.onrender.com/docs
+
 ## Features
 
 - Account registration and login with bcrypt password hashing and expiring JWTs
@@ -54,7 +58,7 @@ The default URL is `http://localhost:3000`; interactive documentation is at `htt
 | `EMAIL_FROM` | Yes | A sender email address verified in the Brevo account |
 | `EMAIL_FROM_NAME` | Yes | Display name shown for the sender |
 
-The application sends `POST https://api.brevo.com/v3/smtp/email` with the API key in the `api-key` header. Missing Brevo configuration stops startup with a clear error. A successful HTTP 201 response is returned as `notification.status: "accepted"` with the Brevo message ID. It means Brevo accepted the request; it does **not** verify inbox delivery. Never commit `.env` or print the API key.
+The application sends `POST https://api.brevo.com/v3/smtp/email` with the API key in the `api-key` header. Missing Brevo configuration stops startup with a clear error. A successful HTTP 201 response is returned as `notification.status: "accepted"` with the Brevo message ID. It means Brevo accepted the request; it does **not** verify inbox delivery. Provider rejections include only redacted status/code/message diagnostics. Never commit `.env` or print the API key.
 
 ## Test
 

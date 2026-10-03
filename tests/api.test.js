@@ -117,10 +117,19 @@ describe('email configuration', () => {
   });
 
   test('handles Brevo rejection without exposing the API key', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({ status: 401, json: jest.fn() });
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 401,
+      json: jest.fn().mockResolvedValue({ code: 'unauthorized', message: 'Key test-api-key rejected' })
+    });
     const service = createEmailService(brevoEnv, fetchMock);
-    await expect(service.sendWelcome({ name: 'Asha', email: 'asha@example.com', role: 'attendee' }))
-      .rejects.toThrow('Brevo email request was rejected with status 401');
+    const promise = service.sendWelcome({ name: 'Asha', email: 'asha@example.com', role: 'attendee' });
+    await expect(promise).rejects.toMatchObject({
+      message: 'Brevo email request was rejected with status 401',
+      provider: 'brevo',
+      providerStatus: 401,
+      providerCode: 'unauthorized',
+      providerMessage: 'Key [redacted] rejected'
+    });
   });
 });
 

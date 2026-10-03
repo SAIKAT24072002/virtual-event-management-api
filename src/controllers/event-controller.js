@@ -69,6 +69,14 @@ function createEventController({ emailService }) {
       } catch (error) {
         console.error('Event confirmation email failed:', error.message);
         notification = { status: 'failed', message: 'Registration succeeded, but confirmation email could not be sent' };
+        if (error.provider === 'brevo') {
+          notification.provider = 'brevo';
+          notification.safeError = {
+            status: error.providerStatus || null,
+            code: error.providerCode || null,
+            message: error.providerMessage || error.message
+          };
+        }
       }
       res.status(201).json({ success: true, data: { event: publicEvent(event), notification } });
     },

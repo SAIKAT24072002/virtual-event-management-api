@@ -33,6 +33,14 @@ function createAuthController({ emailService, jwtSecret, jwtExpiresIn }) {
       } catch (error) {
         console.error('Welcome email failed:', error.message);
         notification = { status: 'failed', message: 'Account created, but welcome email could not be sent' };
+        if (error.provider === 'brevo') {
+          notification.provider = 'brevo';
+          notification.safeError = {
+            status: error.providerStatus || null,
+            code: error.providerCode || null,
+            message: error.providerMessage || error.message
+          };
+        }
       }
       res.status(201).json({ success: true, data: { user: safeUser(user), notification } });
     },
